@@ -2,196 +2,183 @@ import pygame
 import random
 
 pygame.init()
-screen = pygame.display.set_mode((1280,720))
+
+# Screen setup
+SCREEN_HEIGHT, SCREEN_WIDTH = 720, 1280
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 clock = pygame.time.Clock()
-running = True
 dt = 0
-# set up the player
-player1_pos= pygame.Vector2(screen.get_width() - 20, screen.get_height()/2)
-player2_pos = pygame.Vector2(0, screen.get_height()/2)
-player1_colided = False
+CENTER_LINE_POS = pygame.Vector2(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
 
+# Constants
+PADDLE_WIDTH = 20
+PADDLE_HEIGHT = 100
+BALL_RADIUS = 15
+PADDLE_SPEED = 300
+BALL_SPEED = 300
+FRAME_INTERVAL = 0.1
+WINNING_SCORE = 10
+SCORE_FONT_SIZE = 36
+SCALED_WIDTH, SCALED_HEIGHT = 24, 24
+player1_collided = None
 
-center_line_pos = pygame.Vector2(screen.get_width()/2, screen.get_height()/2)
-# set up the ball
-ball_pos = pygame.Vector2(screen.get_width()/2, screen.get_height()/2)
-ball_velocity = [300, 300]
-ball_radius = 20
+# Ball setup
+ball_velocity = [BALL_SPEED * random.choice([-1, 1]), BALL_SPEED * random.choice([-1, 1])]
 
-# load the sprites
-# Plus Sprite
+# Load the sprite
 plus_sprite = pygame.image.load("plus.png").convert_alpha()
 frame_width = plus_sprite.get_width() // 4
 frame_height = plus_sprite.get_height()
-frame_count = 4
-scaled_width, scaled_height = 200, 200
-
-# extract frames from sprite sheet and scale them
-frames = []
-for i in range(frame_count):
-    frame_x = i * frame_width
-    frame_rect = pygame.Rect(frame_x, 0, frame_width, frame_height)
-    frame_image = plus_sprite.subsurface(frame_rect)
-    frame_image = pygame.transform.scale(frame_image, (scaled_width, scaled_height))
-    frames.append(frame_image)
-    
-# animate the plus sprite
+frames = [
+    pygame.transform.scale(plus_sprite.subsurface((i * frame_width, 0, frame_width, frame_height)), (SCALED_WIDTH, SCALED_HEIGHT))
+    for i in range(4)
+]
 current_frame = 0
 frame_timer = 0
-frame_interval = 0.1
 
-
-def animate_plus():
-    global current_frame, frame_timer
-    frame_timer += dt
-    if frame_timer >= frame_interval:
-        current_frame = (current_frame + 1) % frame_count
-        frame_timer = 0
-    return frames[current_frame]
-
-
-def display_plus():
-    plus_pos = pygame.Vector2(screen.get_width()/2, screen.get_height()/2)
-    screen.blit(animate_plus(), plus_pos)
-    return plus_pos
-
-isLost = False
-font = pygame.font.Font(None, 36)
+# Score setup
+font = pygame.font.Font(None, SCORE_FONT_SIZE)
 score = [0, 0]
+is_lost = False
 
+# Classes
+class Player:
+    def __init__(self, color, x, y, height):
+        self.color = color
+        self.pos = pygame.Vector2(x, y)
+        self.height = height
+
+    def draw(self, width):
+        pygame.draw.rect(screen, self.color, (self.pos.x, self.pos.y, width, self.height))
+
+    def move(self, direction):
+        self.pos.y += direction * PADDLE_SPEED * dt
+        self.pos.y = max(0, min(SCREEN_HEIGHT - self.height, self.pos.y))
+
+class Ball:
+    def __init__(self):
+        self.pos = pygame.Vector2(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
+        self.velocity = pygame.Vector2(*ball_velocity)
+        
+    def draw(self):
+        pygame.draw.circle(screen, "white", self.pos, BALL_RADIUS)
+
+    def move(self):
+        self.pos += self.velocity * dt
+        if self.pos.y - BALL_RADIUS < 0 or self.pos.y + BALL_RADIUS > SCREEN_HEIGHT:
+            self.velocity.y *= -1
+        return self.pos
+
+    def reset(self):
+        global player1_collided
+        self.pos = pygame.Vector2(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
+        self.velocity = pygame.Vector2(BALL_SPEED * random.choice([-1, 1]), BALL_SPEED * random.choice([-1, 1]))
+        player1_collided = None
+        print(f'reset to false', player1_collided)
+        
+class Power:
+    def __init__(self, x, y, current_frame, frame_timer):
+        self.x = x
+        self.y = y
+        self.current_frame = current_frame
+        self.frame_timer = frame_timer
+        
+    def draw(self):
+        self.frame_timer += dt
+        if self.frame_timer >= FRAME_INTERVAL:
+            self.current_frame = (self.current_frame + 1) % len(frames)
+            self.frame_timer = 0
+        screen.blit(frames[self.current_frame], (self.x, self.y))
+        
+
+# Functions
+def handle_collision(ball, player1, player2):
+    global player1_collided
+    if player1.pos.y <= ball.pos.y <= player1.pos.y + player1.height and player1.pos.x <= ball.pos.x + BALL_RADIUS <= player1.pos.x + PADDLE_WIDTH:
+        ball.velocity.x *= -1
+        player1_collided = True
+
+    if player2.pos.y <= ball.pos.y <= player2.pos.y + player2.height and player2.pos.x + ball.pos.x - BALL_RADIUS <= player2.pos.x + PADDLE_WIDTH:
+        ball.velocity.x *= -1
+        player1_collided = False
+        
+    if power.x - BALL_RADIUS <= ball.pos.x <= power.x + SCALED_WIDTH + BALL_RADIUS and power.y - BALL_RADIUS <= ball.pos.y <= power.y + SCALED_HEIGHT + BALL_RADIUS:
+        if player1_collided == True:
+            player1.height += 10
+        elif player1_collided == False:
+            player2.height += 10
+    # create a red rectangle around the power up
+    pygame.draw.rect(screen, "red", (power.x - 5, power.y - 5, SCALED_WIDTH + 10, SCALED_HEIGHT + 10), 2)
+
+def count_points(ball):
+    global is_lost
+    if ball.pos.x < 0:
+        score[1] += 1
+        is_lost = True
+    elif ball.pos.x > SCREEN_WIDTH:
+        score[0] += 1
+        is_lost = True
+
+def display_score():
+    text = font.render(f"{score[0]} - {score[1]}", True, "white")
+    screen.blit(text, (SCREEN_WIDTH / 2 - text.get_width() / 2, 50))
+
+def check_winner():
+    if max(score) == WINNING_SCORE:
+        text = font.render(f"Player {score.index(max(score)) + 1} wins!", True, "white")
+        screen.blit(text, (SCREEN_WIDTH / 2 - text.get_width() / 2, SCREEN_HEIGHT / 2))
+        return True
+    return False
+
+# Game setup
+player1 = Player("blue", SCREEN_WIDTH - PADDLE_WIDTH, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2, PADDLE_HEIGHT)
+player2 = Player("red", 0, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2, PADDLE_HEIGHT)
+ball = Ball()
+power = Power(random.randint(25, SCREEN_WIDTH - 25), random.randint(25, SCREEN_HEIGHT - 25), current_frame, frame_timer)
+
+# Main game loop
+running = True
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-            
+
     screen.fill("#000000")
+    pygame.draw.aaline(screen, "white", (CENTER_LINE_POS.x, 0), (CENTER_LINE_POS.x, SCREEN_HEIGHT))
     
-    #  ball position
-    pygame.draw.circle(screen, "red", ball_pos, ball_radius)
-    
-    # def player(area, color, playerPos, width, height):
-    #     pygame.draw.rect(screen, color, (playerPos.x, playerPos.y, width, height))
-    class player:
-        def __init__(self, color, playerPosX, playerPosY, width, height):
-            self.color = color
-            self.playerPosX = playerPosX
-            self.playerPosY = playerPosY
-            self.width = width
-            self.height = height
-            
-        def draw(self, screen):
-            pygame.draw.rect(screen, self.color, (self.playerPosX, self.playerPosY, self.width, self.height))
-            
-    player1 = player("blue", player1_pos.x, player1_pos.y, 20, 100)
-    player1.draw(screen)
-    player2 = player("blue", player2_pos.x, player2_pos.y, 20, 100)
-    player2.draw(screen)
-
-        
-    # center line position
-    pygame.draw.aaline(screen, "white", (center_line_pos.x, 0), (center_line_pos.x, screen.get_height()))
-    
+    # Player input
     keys = pygame.key.get_pressed()
-     
-    def registerKeys(keys):
-        if keys[pygame.K_UP]:
-            player1_pos.y -= 300 * dt
-        if keys[pygame.K_DOWN]: 
-            player1_pos.y += 300 * dt
-        if keys[pygame.K_w]:
-            player2_pos.y -= 300 * dt
-        if keys[pygame.K_s]:
-            player2_pos.y += 300 * dt
-    registerKeys(keys)
-    
+    if keys[pygame.K_UP]:
+        player1.move(-1)
+    if keys[pygame.K_DOWN]:
+        player1.move(1)
+    if keys[pygame.K_w]:
+        player2.move(-1)
+    if keys[pygame.K_s]:
+        player2.move(1)
 
-    def moveBall(ball_pos):
-        global player1_colided
-        ball_pos.x += ball_velocity[0] * dt
-        ball_pos.y += ball_velocity[1] * dt
-        plus_position = display_plus()
-        
-        if ball_pos.y - ball_radius < 0:
-            ball_velocity[1] *= -1
-            ball_pos.y = ball_radius  # Reset to inside the boundary
-        elif ball_pos.y + ball_radius > screen.get_height():
-         ball_velocity[1] *= -1
-         ball_pos.y = screen.get_height() - ball_radius  # Reset to inside the boundary
-         
-        #  Detect collision with player 1 and bounce the ball
-        if ball_pos.y >= player1_pos.y and ball_pos.y <= player1_pos.y + 100 and ball_pos.x <= player1_pos.x + 20 and ball_pos.x >= player1_pos.x:
-            ball_velocity[0] *= -1
-            player1_colided = True
-        #  Detect collision with player 2 and bounce the ball
-        if ball_pos.y >= player2_pos.y and ball_pos.y <= player2_pos.y + 100 and ball_pos.x <= player2_pos.x + 20 and ball_pos.x >= player2_pos.x:
-            ball_velocity[0] *= -1
-            player1_colided = False
-        print(plus_position[0])
-        #  Detect collision with the sprite
-        if ball_pos.y >= plus_position[1] and ball_pos.y <= plus_position[1] + 200 and ball_pos.x <= plus_position[0] + 200 and ball_pos.x >= plus_position[0]:
-            if player1_colided == True:
-                player1.height += 10
-            else:
-                player2.height += 10
-            
-    moveBall(ball_pos)
-    
-    def sliderMovement(player1_pos, player2_pos):
-        if player1_pos.y <= 0:
-            player1_pos.y = 0
-        elif player1_pos.y + 100 >= screen.get_height():
-            player1_pos.y = screen.get_height() - 100
-        if player2_pos.y <= 0:
-            player2_pos.y = 0
-        elif player2_pos.y + 100 >= screen.get_height():
-            player2_pos.y = screen.get_height() - 100
-    
-    sliderMovement(player1_pos, player2_pos)
-    
-    def countPoints(score, ball_pos):
-        global isLost
-        if ball_pos.x <= 0:
-            score[0] += 1
-            isLost = True
-        elif ball_pos.x >= screen.get_width():
-            score[1] += 1
-            isLost = True
-            
-    countPoints(score, ball_pos)
-    
-    if isLost:
-            resetBall(ball_velocity)
-    
-    def resetBall(ball_velocity):
-        global isLost
-        
-        ball_pos.x = screen.get_width()/2
-        ball_pos.y = screen.get_height()/2
-        ball_velocity[0] = 300 * random.choice([-1, 1])
-        ball_velocity[1] = 300 * random.choice([-1, 1])
-        isLost = False
-    
-    def winner():
-        if score[0] == 10 or score[1] == 10:
-            global running
-            isLost = True
-            text = font.render(f"Player { score.index(max(score)) } wins", True, "white")
-            text_rect = text.get_rect(center=screen.get_rect().center)
-            screen.blit(text, text_rect)
-            # stop the game
-            running = False
-    
-    
-    def displayScore(score):
-        text = font.render(f"{score[0]} - {score[1]}", True, "white")
-        text_pos = pygame.Vector2(screen.get_width()/2, 50)
-        screen.blit(text, text_pos)
-        winner()
-    displayScore(score)
-    
-    display_plus()
-    
+    # Game mechanics
+    ball.move()
+    handle_collision(ball, player1, player2)
+    count_points(ball)
+
+    if is_lost:
+        ball.reset()
+        is_lost = False
+
+    if check_winner():
+        pygame.display.flip()
+        pygame.time.wait(3000)
+        running = False
+
+    # Drawing
+    player1.draw(PADDLE_WIDTH)
+    player2.draw(PADDLE_WIDTH)
+    ball.draw()
+    display_score()
+    power.draw()
+
     pygame.display.flip()
-    dt = clock.tick(60)/1000
-    
-pygame.quit() 
+    dt = clock.tick(60) / 1000
+
+pygame.quit()
